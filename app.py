@@ -1,12 +1,15 @@
 # app.py
 """
 FINAL Streamlit EDA Dashboard (Sales)
-- Loads dataset ONLY from /mnt/data/sales_dataset.xlsx
-- Added Sales vs Profit (trendline)
-- Replaced boxplot + heatmap with:
-    1) Sales vs Quantity Bubble Chart
-    2) Category-wise Sales Violin Plot
-- Added deeper insights summary
+Includes:
+- Treemap (Sales by Category & Product)
+- Profit Margin Distribution
+- Top Customers by Sales
+- Sales vs Profit (trendline)
+- Line, Bar, Scatter, Histogram, Pie
+- Statistical summary + insights summary
+
+Dataset must exist at: sales_dataset.xlsx
 """
 
 import streamlit as st
@@ -16,7 +19,7 @@ import plotly.express as px
 import os
 
 st.set_page_config(page_title="Sales EDA", layout="wide")
-st.title("📈 Sales EDA Dashboard")
+st.title("📈 Sales EDA Dashboard by Aniket Gund")
 
 # ----------------------------
 # LOAD DATASET
@@ -46,18 +49,21 @@ if "Date" in df.columns:
 # ----------------------------
 st.sidebar.header("Filters")
 
+# Date filter
 if "Date" in df.columns:
     min_d, max_d = df["Date"].min().date(), df["Date"].max().date()
     date_range = st.sidebar.date_input("Date Range", value=(min_d, max_d))
 else:
     date_range = None
 
+# Product filter
 if "Product" in df.columns:
     products = df["Product"].unique().tolist()
     selected_products = st.sidebar.multiselect("Filter Products", products, default=products[:5])
 else:
     selected_products = None
 
+# Histogram bins
 bins = st.sidebar.slider("Histogram bins (Sales)", 5, 60, 20)
 
 # ----------------------------
@@ -100,7 +106,7 @@ if "Product" in df_view.columns and "Profit" in df_view.columns:
     fig = px.bar(grouped, x="Product", y="Profit")
     st.plotly_chart(fig, use_container_width=True)
 
-# 3) Sales vs Profit (with trendline)
+# 3) Sales vs Profit (trendline)
 if "Sales" in df_view.columns and "Profit" in df_view.columns:
     st.subheader("📊 Sales vs Profit (OLS Trendline)")
     fig = px.scatter(
@@ -112,35 +118,60 @@ if "Sales" in df_view.columns and "Profit" in df_view.columns:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# 🚀 NEW CHART 1 — Sales vs Quantity Bubble Chart
-if "Sales" in df_view.columns and "Quantity" in df_view.columns and "Profit" in df_view.columns:
-    st.subheader("🫧 Sales vs Quantity Bubble Chart (Profit-sized)")
-    fig = px.scatter(
+# ⭐ OPTION 1 → Treemap (Sales by Category & Product)
+if "Category" in df_view.columns and "Sales" in df_view.columns:
+    st.subheader("🗂️ Sales by Category & Product (Treemap)")
+    fig = px.treemap(
         df_view,
-        x="Sales",
-        y="Quantity",
-        size="Profit",
-        color="Product" if "Product" in df_view else None,
-        title="Sales vs Quantity with Profit Weight"
+        path=["Category", "Product"] if "Product" in df_view.columns else ["Category"],
+        values="Sales",
+        title="Sales Contribution Breakdown"
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# 4) Sales Distribution
+# ⭐ OPTION 2 → Profit Margin Distribution
+if "Profit" in df_view.columns and "Sales" in df_view.columns:
+    st.subheader("📉 Profit Margin Distribution")
+    df_view["Profit_Margin"] = df_view["Profit"] / df_view["Sales"]
+    fig = px.histogram(
+        df_view,
+        x="Profit_Margin",
+        nbins=40,
+        title="Distribution of Profit Margins",
+        color_discrete_sequence=["#2ECC71"]
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# ⭐ OPTION 4 → Top 20 Customers by Sales
+if "Customer" in df_view.columns and "Sales" in df_view.columns:
+    st.subheader("🏆 Top Customers by Sales")
+    top_customers = (
+        df_view.groupby("Customer")["Sales"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(20)
+        .reset_index()
+    )
+    fig = px.bar(
+        top_customers,
+        x="Customer",
+        y="Sales",
+        title="Top 20 Customers by Total Sales"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# Existing: Sales Distribution
 if "Sales" in df_view.columns:
     st.subheader("📦 Sales Distribution")
     fig = px.histogram(df_view, x="Sales", nbins=bins)
     st.plotly_chart(fig, use_container_width=True)
 
-# 🚀 NEW CHART 2 — Category-wise Sales Violin Plot
-if "Category" in df_view.columns and "Sales" in df_view.columns:
-    st.subheader("🎻 Sales Distribution by Category (Violin Plot)")
-    fig = px.violin(df_view, x="Category", y="Sales", box=True, points="all")
-    st.plotly_chart(fig, use_container_width=True)
-
-# 5) Customers vs Quantity
-if "Customer" in df_view.columns and "Quantity" in df_view.columns:
-    st.subheader("👥 Customers vs Quantity")
-    fig = px.scatter(df_view, x="Customer", y="Quantity")
+# Existing: Category Pie Chart
+if "Category" in df_view.columns:
+    st.subheader("🍰 Category Distribution")
+    counts = df_view["Category"].value_counts().reset_index()
+    counts.columns = ["Category", "Count"]
+    fig = px.pie(counts, names="Category", values="Count")
     st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
@@ -153,41 +184,43 @@ summary = df_view.describe().T
 st.dataframe(summary)
 
 # ----------------------------
-# INSIGHTS SUMMARY (EXPANDED)
+# INSIGHTS SUMMARY (UPDATED)
 # ----------------------------
-st.subheader("📝 Insights Summary (Descriptive & Auto-Generated)")
+st.subheader("📝 Insights Summary (Auto-Generated)")
 
 insights = []
 
-# Sales-Profit Relationship
+# Sales-Profit relation
 if "Sales" in df_view.columns and "Profit" in df_view.columns:
-    corr_sp = df_view["Sales"].corr(df_view["Profit"])
-    if corr_sp > 0.4:
-        insights.append("Higher sales generally lead to higher profit, showing a strong positive business relationship.")
+    corr = df_view["Sales"].corr(df_view["Profit"])
+    if corr > 0.4:
+        insights.append("Higher sales strongly correlate with higher profit, showing a healthy business pattern.")
+    elif corr < -0.3:
+        insights.append("Sales and profit are negatively related — high discounts or low margins may be present.")
     else:
-        insights.append("Sales and profit show no strong correlation, indicating margins vary depending on product.")
+        insights.append("Sales and profit show a weak relationship — margins vary widely by product.")
 
-# Sales–Quantity bubble chart insights
-if {"Sales", "Quantity", "Profit"}.issubset(df_view.columns):
-    insights.append("Bubble chart indicates which products push quantity vs sales revenue, revealing demand-heavy or margin-heavy items.")
-
-# Category-wise violin insights
-if "Category" in df_view.columns and "Sales" in df_view.columns:
+# Treemap insights
+if "Category" in df_view.columns:
     top_cat = df_view["Category"].value_counts().idxmax()
-    insights.append(f"Category **{top_cat}** dominates in frequency, with noticeably varying sales distribution across categories.")
+    insights.append(f"Category **{top_cat}** contributes the largest share of total sales in the dataset.")
 
-# Quantity trend over time
-if "Date" in df_view.columns and "Quantity" in df_view.columns:
-    insights.append("Quantity shows temporal variation, indicating seasonal or promotional impact over the timeline.")
-
-# Sales distribution skewness
-if "Sales" in df_view.columns:
-    skew = df_view["Sales"].skew()
-    if skew > 1:
-        insights.append("Sales distribution is right-skewed, meaning a small number of high-sale events dominate revenue.")
+# Profit margin insight
+if "Profit" in df_view.columns and "Sales" in df_view.columns:
+    skew_m = df_view["Profit_Margin"].skew()
+    if skew_m > 1:
+        insights.append("Profit margins are right-skewed — a few items have extremely high profitability.")
     else:
-        insights.append("Sales distribution is mostly balanced without extreme outliers.")
+        insights.append("Profit margins are fairly balanced, indicating uniform pricing strategy.")
 
-# Print insights
+# Top customers insight
+if "Customer" in df_view.columns:
+    top_customer = df_view.groupby("Customer")["Sales"].sum().idxmax()
+    insights.append(f"Customer **{top_customer}** generates the highest revenue among all customers.")
+
+# Final quantity insight
+if "Quantity" in df_view.columns and "Date" in df_view.columns:
+    insights.append("Quantity fluctuates noticeably across time, indicating seasonality or promotional impact.")
+
 for i in insights:
     st.write("✔", i)
