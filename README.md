@@ -1,11 +1,13 @@
-#📊 Sales EDA Dashboard – Project Overview
+# **📊 Sales EDA Dashboard by Aniket Gund – Project Overview**
 
-🎯 Objective
+### **Direct Live Link: https://edasalesproject-ljygldtmnveyrmjohsqtcq.streamlit.app/**
+
+## **🎯 Objective:**
 
 The goal of this Exploratory Data Analysis (EDA) is to understand how different business factors — such as product categories, customer behavior, sales volume, profitability, and time-based trends — impact overall performance.
 The dashboard helps uncover patterns, compare product segments, identify top customers, and analyze profit margins to support data-driven decisions.
 
-#🔍 Key Questions Explored in the EDA
+## **🔍 Key Questions Explored in the EDA**
 
 1️⃣ What is the distribution of Sales?
 
@@ -79,7 +81,7 @@ Top customers
 
 Margin behavior and anomalies
 
-📥 Export Options Available in the Dashboard
+## **📥 Export Options Available in the Dashboard**
 
 The dashboard includes two convenient export features:
 
