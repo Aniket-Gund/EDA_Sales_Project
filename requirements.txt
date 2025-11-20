@@ -4,3 +4,5 @@ numpy
 plotly
 openpyxl
 statsmodels
+kaleido
+reportlab
