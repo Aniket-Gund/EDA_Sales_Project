@@ -15,12 +15,12 @@ import plotly.express as px
 import os
 
 st.set_page_config(page_title="Sales EDA", layout="wide")
-st.title("📈 Sales EDA Dashboard")
+st.title("📈 Sales EDA Dashboard by Aniket Gund")
 
 # ----------------------------
 # LOAD DATASET (NO UPLOADS)
 # ----------------------------
-DATA_PATH = "/mnt/data/sales_dataset.xlsx"
+DATA_PATH = "sales_dataset.xlsx"
 
 if not os.path.exists(DATA_PATH):
     st.error(f"Dataset not found at: {DATA_PATH}")
