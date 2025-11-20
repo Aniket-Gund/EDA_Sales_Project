@@ -1,6 +1,6 @@
 # app.py
 """
-Sales EDA — FINAL HTML Export Version
+Sales EDA — FINAL HTML Export Version (treemap & HTML export fixed)
 
 Features:
 - Loads /mnt/data/sales_dataset.xlsx (no uploader)
@@ -9,6 +9,7 @@ Features:
     * Download dataset
     * Download HTML snapshot (all charts + summary)
 - No PNG/PDF export
+- Enhanced treemap preserved in UI and exported HTML (values + colors)
 """
 
 import os
@@ -88,9 +89,9 @@ if selected_products:
 # -------------------------
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Rows", f"{len(df_view):,}")
-c2.metric("Total Sales", f"{df_view['Sales'].sum():,.2f}")
-c3.metric("Total Profit", f"{df_view['Profit'].sum():,.2f}")
-c4.metric("Total Quantity", f"{int(df_view['Quantity'].sum())}")
+c2.metric("Total Sales", f"{df_view['Sales'].sum():,.2f}" if "Sales" in df_view.columns else "n/a")
+c3.metric("Total Profit", f"{df_view['Profit'].sum():,.2f}" if "Profit" in df_view.columns else "n/a")
+c4.metric("Total Quantity", f"{int(df_view['Quantity'].sum())}" if "Quantity" in df_view.columns else "n/a")
 
 st.markdown("---")
 
@@ -102,47 +103,98 @@ fig_q = fig_profit_prod = fig_sp = fig_treemap = fig_margin = fig_top_cust = fig
 # Quantity over time
 if "Date" in df_view and "Quantity" in df_view:
     st.subheader("📅 Quantity Over Time")
-    fig_q = px.line(df_view.sort_values("Date"), x="Date", y="Quantity", markers=True)
+    fig_q = px.line(df_view.sort_values("Date"), x="Date", y="Quantity", markers=True, template="plotly_white")
+    fig_q.update_layout(margin=dict(t=40, b=20))
     st.plotly_chart(fig_q, use_container_width=True)
 
 # Profit by product
 if "Product" in df_view and "Profit" in df_view:
     st.subheader("💰 Profit by Product")
     prod_profit = df_view.groupby("Product")["Profit"].sum().reset_index()
-    fig_profit_prod = px.bar(prod_profit, x="Product", y="Profit")
+    fig_profit_prod = px.bar(prod_profit, x="Product", y="Profit", template="plotly_white")
+    fig_profit_prod.update_layout(margin=dict(t=40, b=20))
     st.plotly_chart(fig_profit_prod, use_container_width=True)
 
 # Sales vs Profit
 if "Sales" in df_view and "Profit" in df_view:
     st.subheader("📊 Sales vs Profit (Trendline)")
     try:
-        fig_sp = px.scatter(df_view, x="Sales", y="Profit", color="Product", trendline="ols")
+        fig_sp = px.scatter(df_view, x="Sales", y="Profit", color="Product" if "Product" in df_view else None, trendline="ols", template="plotly_white")
     except:
-        fig_sp = px.scatter(df_view, x="Sales", y="Profit", color="Product")
+        fig_sp = px.scatter(df_view, x="Sales", y="Profit", color="Product" if "Product" in df_view else None, template="plotly_white")
+    fig_sp.update_layout(margin=dict(t=40, b=20))
     st.plotly_chart(fig_sp, use_container_width=True)
 
-# Treemap
+# -------------------------
+# ENHANCED TREEMAP (Category -> Product) — super treemap with values & colors
+# -------------------------
 if "Category" in df_view and "Sales" in df_view:
-    st.subheader("🗂️ Treemap — Sales, Profit & Margin")
-    df_agg = df_view.groupby(["Category", "Product"]).agg(
-        Sales=("Sales", "sum"),
-        Profit=("Profit", "sum")
-    ).reset_index()
-    df_agg["Profit_Margin"] = df_agg["Profit"] / df_agg["Sales"]
+    st.subheader("🗂️ Advanced Treemap — Sales, Profit & Margin (enhanced)")
+
+    # Aggregate to Category/Product level
+    if "Product" in df_view and "Profit" in df_view:
+        agg_cols = ["Category", "Product"]
+        df_agg = (
+            df_view.groupby(agg_cols, dropna=False)
+            .agg(Sales=("Sales", "sum"), Profit=("Profit", "sum"))
+            .reset_index()
+        )
+    elif "Product" in df_view:
+        agg_cols = ["Category", "Product"]
+        df_agg = (
+            df_view.groupby(agg_cols, dropna=False)
+            .agg(Sales=("Sales", "sum"))
+            .reset_index()
+        )
+        df_agg["Profit"] = 0.0
+    else:
+        agg_cols = ["Category"]
+        df_agg = (
+            df_view.groupby(agg_cols, dropna=False)
+            .agg(Sales=("Sales", "sum"), Profit=("Profit", "sum") if "Profit" in df_view.columns else ("Sales", "sum"))
+            .reset_index()
+        )
+        if "Profit" not in df_agg.columns:
+            df_agg["Profit"] = 0.0
+
+    # Compute margin safely (avoid div by zero)
+    df_agg["Profit_Margin"] = np.where(df_agg["Sales"] != 0, df_agg["Profit"] / df_agg["Sales"], 0.0)
+
+    # Create treemap figure
+    path = ["Category", "Product"] if "Product" in df_agg.columns else ["Category"]
     fig_treemap = px.treemap(
         df_agg,
-        path=["Category", "Product"],
+        path=path,
         values="Sales",
         color="Profit_Margin",
-        color_continuous_scale="RdYlGn"
+        color_continuous_scale="RdYlGn",
+        labels={"Profit_Margin": "Profit Margin"},
+        title="Sales contribution by Category and Product (colored by profit margin)",
+        template="plotly_white"
     )
+
+    # customdata must match df_agg order to show Profit and Margin per node
+    customdata = np.stack((df_agg["Profit"].fillna(0).to_numpy(), df_agg["Profit_Margin"].to_numpy()), axis=-1)
+
+    # Update traces to show value, profit, margin and percent parent
+    fig_treemap.update_traces(
+        customdata=customdata,
+        texttemplate="<b>%{label}</b><br>₹%{value:,.0f}<br>Profit: ₹%{customdata[0]:,.0f}<br>Margin: %{customdata[1]:.1%}<br>Share: %{percentParent:.1%}",
+        hovertemplate="<b>%{label}</b><br>Sales: ₹%{value:,.0f}<br>Profit: ₹%{customdata[0]:,.0f}<br>Margin: %{customdata[1]:.2%}<br>Share: %{percentParent:.2%}<extra></extra>",
+        textposition="middle center",
+    )
+
+    # Layout tweaks to keep the same look in UI and exported HTML
+    fig_treemap.update_layout(margin=dict(t=50, l=10, r=10, b=10), uniformtext=dict(minsize=10, mode="hide"))
+
     st.plotly_chart(fig_treemap, use_container_width=True)
 
 # Profit margin histogram
-if show_profit_margin:
+if show_profit_margin and "Profit" in df_view and "Sales" in df_view:
     st.subheader("📉 Profit Margin Distribution")
-    df_view["Profit_Margin"] = df_view["Profit"] / df_view["Sales"]
-    fig_margin = px.histogram(df_view, x="Profit_Margin", nbins=40)
+    df_view["Profit_Margin"] = np.where(df_view["Sales"] == 0, 0.0, df_view["Profit"] / df_view["Sales"])
+    fig_margin = px.histogram(df_view, x="Profit_Margin", nbins=40, template="plotly_white")
+    fig_margin.update_layout(margin=dict(t=40, b=20))
     st.plotly_chart(fig_margin, use_container_width=True)
 
 # Top customers
@@ -155,12 +207,14 @@ if "Customer" in df_view:
         .head(20)
         .reset_index()
     )
-    fig_top_cust = px.bar(top_customers, x="Customer", y="Sales")
+    fig_top_cust = px.bar(top_customers, x="Customer", y="Sales", template="plotly_white")
+    fig_top_cust.update_layout(margin=dict(t=40, b=20))
     st.plotly_chart(fig_top_cust, use_container_width=True)
 
 # Sales distribution
 st.subheader("📦 Sales Distribution")
-fig_sales_hist = px.histogram(df_view, x="Sales", nbins=bins)
+fig_sales_hist = px.histogram(df_view, x="Sales", nbins=bins, template="plotly_white")
+fig_sales_hist.update_layout(margin=dict(t=40, b=20))
 st.plotly_chart(fig_sales_hist, use_container_width=True)
 
 # Category pie
@@ -169,6 +223,7 @@ if "Category" in df_view:
     cat_counts = df_view["Category"].value_counts().reset_index()
     cat_counts.columns = ["Category", "Count"]
     fig_cat_pie = px.pie(cat_counts, values="Count", names="Category")
+    fig_cat_pie.update_layout(margin=dict(t=40, b=20))
     st.plotly_chart(fig_cat_pie, use_container_width=True)
 
 # -------------------------
@@ -185,22 +240,35 @@ st.dataframe(summary)
 st.subheader("📝 Insights Summary")
 insights = []
 
-corr_val = df_view["Sales"].corr(df_view["Profit"])
-if corr_val > 0.4:
-    insights.append("Sales and Profit show a strong positive relationship.")
-elif corr_val < -0.3:
-    insights.append("Sales and Profit are negatively correlated.")
-else:
-    insights.append("Sales and Profit have a weak/moderate correlation.")
+if "Sales" in df_view and "Profit" in df_view:
+    corr_val = df_view["Sales"].corr(df_view["Profit"])
+    if corr_val > 0.4:
+        insights.append("Sales and Profit show a strong positive relationship.")
+    elif corr_val < -0.3:
+        insights.append("Sales and Profit are negatively correlated.")
+    else:
+        insights.append("Sales and Profit have a weak/moderate correlation.")
 
-top_cat = df_view["Category"].value_counts().idxmax()
-insights.append(f"Category '{top_cat}' contributes the most sales.")
+if "Category" in df_view:
+    try:
+        top_cat = df_view["Category"].value_counts().idxmax()
+        insights.append(f"Category '{top_cat}' contributes the most sales.")
+    except Exception:
+        pass
 
-top_product = df_view.groupby("Product")["Sales"].sum().idxmax()
-insights.append(f"Highest-selling product: {top_product}")
+if "Product" in df_view and "Sales" in df_view:
+    try:
+        top_product = df_view.groupby("Product")["Sales"].sum().idxmax()
+        insights.append(f"Highest-selling product: {top_product}")
+    except Exception:
+        pass
 
-top_customer = df_view.groupby("Customer")["Sales"].sum().idxmax()
-insights.append(f"Top customer: {top_customer}")
+if "Customer" in df_view and "Sales" in df_view:
+    try:
+        top_customer = df_view.groupby("Customer")["Sales"].sum().idxmax()
+        insights.append(f"Top customer: {top_customer}")
+    except Exception:
+        pass
 
 for item in insights:
     st.write("✔", item)
@@ -215,32 +283,30 @@ figures = [
     fig_q, fig_profit_prod, fig_sp, fig_treemap,
     fig_margin, fig_top_cust, fig_sales_hist, fig_cat_pie
 ]
-
 figures = [f for f in figures if f is not None]
 
 if st.button("⬇️ Download HTML"):
     html_blocks = []
     first = True
-
     for fig in figures:
+        # include plotlyjs only once to preserve shared behavior & styles
         if first:
             html_blocks.append(fig.to_html(full_html=False, include_plotlyjs='cdn'))
             first = False
         else:
             html_blocks.append(fig.to_html(full_html=False, include_plotlyjs=False))
 
-    # Add summary to HTML
-    summary_html = "<h2>Insights Summary</h2><ul>"
+    # Build summary HTML (same insights shown in app)
+    summary_html = "<section style='font-family:Arial,Helvetica,sans-serif;'><h2>Insights Summary</h2><ul>"
     for i in insights:
         summary_html += f"<li>{i}</li>"
-    summary_html += "</ul>"
+    summary_html += "</ul></section>"
 
     final_html = (
         "<html><head><meta charset='utf-8'></head><body>"
-        f"<h1>Sales EDA Snapshot</h1><p>Generated: {datetime.utcnow().isoformat()}</p><hr>"
+        f"<div style='font-family:Arial,Helvetica,sans-serif;padding:16px;'><h1>Sales EDA Snapshot</h1><p>Generated: {datetime.utcnow().isoformat()}</p><hr></div>"
         + "".join(html_blocks)
-        + "<hr>"
-        + summary_html
+        + "<div style='padding:16px;'>" + summary_html + "</div>"
         + "</body></html>"
     )
 
