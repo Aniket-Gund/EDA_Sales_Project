@@ -1,30 +1,19 @@
 # app.py
 """
-Streamlit EDA Dashboard — Final enhanced version
+Sales EDA — Final (with robust export fallbacks)
 
-Features:
-- Loads dataset from /mnt/data/sales_dataset.xlsx (NO uploader)
-- Charts:
-    * Quantity over time
-    * Profit by product (bar)
-    * Sales vs Profit (scatter with OLS trendline)
-    * Treemap (Category -> Product) showing Sales, Profit, Profit Margin, colored by margin
-    * Profit margin distribution (histogram)
-    * Top 20 customers by Sales (bar)
-    * Sales distribution (histogram)
-    * Category pie chart
-- Statistical summary (df.describe)
-- Auto-generated insights (expanded)
-- Download original dataset button
-- Export PNG and PDF report (treemap snapshot + brief text summary) — in-memory, no temp files
-Notes: PDF/PNG export requires kaleido and reportlab in environment. If export fails, app will show an error and a hint to install dependencies.
+Behavior:
+- Loads /mnt/data/sales_dataset.xlsx (no uploader)
+- Renders charts with Plotly
+- Tries to export PNG using kaleido
+- If kaleido fails (Chrome/Chromium missing), falls back to:
+    * Download interactive HTML of the selected chart
+    * Create a PDF containing a simple text summary (always works)
+- Also provides dataset download
 """
 
 import io
 import os
-import math
-import textwrap
-import tempfile
 from datetime import datetime
 
 import streamlit as st
@@ -33,23 +22,19 @@ import numpy as np
 import plotly.express as px
 import plotly.io as pio
 
-# Optional: reportlab for PDF creation
+# PDF helper
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 
-# -------------------------
-# Page config
-# -------------------------
-st.set_page_config(page_title="Sales EDA (Enhanced)", layout="wide")
+st.set_page_config(page_title="Sales EDA (Export-safe)", layout="wide")
 st.title("📈 Sales EDA Dashboard by Aniket Gund")
 
 # -------------------------
 # Load dataset (no uploader)
 # -------------------------
 DATA_PATH = "sales_dataset.xlsx"
-
 if not os.path.exists(DATA_PATH):
-    st.error(f"Dataset not found at: {DATA_PATH}\nPlace the Excel file at that path and reload the app.")
+    st.error(f"Dataset not found at: {DATA_PATH}")
     st.stop()
 
 try:
@@ -58,10 +43,9 @@ except Exception as e:
     st.error(f"Error reading dataset: {e}")
     st.stop()
 
-# Normalize column names
 df.columns = [c.strip() for c in df.columns]
 
-# Allow user to download original dataset
+# Download original dataset
 st.subheader("📁 Download Original Dataset")
 try:
     with open(DATA_PATH, "rb") as f:
@@ -71,22 +55,18 @@ try:
             file_name=os.path.basename(DATA_PATH),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-except Exception as e:
-    st.warning(f"Could not create download button: {e}")
+except Exception:
+    st.info("Unable to provide direct dataset download in this environment.")
 
-# -------------------------
 # Preprocessing
-# -------------------------
 if "Date" in df.columns:
     try:
         df["Date"] = pd.to_datetime(df["Date"])
     except Exception:
-        # leave as is if conversion fails
         pass
 
 # Sidebar filters
 st.sidebar.header("Filters")
-
 if "Date" in df.columns and np.issubdtype(df["Date"].dtype, np.datetime64):
     min_d = df["Date"].min().date()
     max_d = df["Date"].max().date()
@@ -95,12 +75,12 @@ else:
     date_range = None
 
 if "Product" in df.columns:
-    product_options = sorted(df["Product"].dropna().unique().tolist())
-    selected_products = st.sidebar.multiselect("Products (filter)", options=product_options, default=product_options[:6])
+    products = sorted(df["Product"].dropna().unique().tolist())
+    selected_products = st.sidebar.multiselect("Products (filter)", options=products, default=products[:6])
 else:
     selected_products = None
 
-bins = st.sidebar.slider("Histogram bins (Sales)", min_value=5, max_value=100, value=20)
+bins = st.sidebar.slider("Histogram bins (Sales)", 5, 60, 20)
 show_profit_margin = st.sidebar.checkbox("Show profit margin histogram", value=True)
 
 # Apply filters
@@ -112,12 +92,7 @@ if date_range and len(date_range) == 2 and "Date" in df_view.columns:
 if selected_products and "Product" in df_view.columns:
     df_view = df_view[df_view["Product"].isin(selected_products)]
 
-# Defensive: ensure numeric columns exist for aggregations
-numeric_cols = df_view.select_dtypes(include=[np.number]).columns.tolist()
-
-# -------------------------
 # Top metrics
-# -------------------------
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Rows", f"{len(df_view):,}")
 total_sales = df_view["Sales"].sum() if "Sales" in df_view.columns else None
@@ -129,10 +104,7 @@ c4.metric("Total Quantity", f"{total_qty:,}" if total_qty is not None else "n/a"
 
 st.markdown("---")
 
-# -------------------------
-# Charts
-# -------------------------
-
+# Charts (same as your app)
 # 1) Quantity over time
 if "Date" in df_view.columns and "Quantity" in df_view.columns:
     st.subheader("📅 Quantity Over Time")
@@ -146,25 +118,22 @@ if "Product" in df_view.columns and "Profit" in df_view.columns:
     fig_profit_prod = px.bar(prod_profit, x="Product", y="Profit", title="Total Profit by Product")
     st.plotly_chart(fig_profit_prod, use_container_width=True)
 
-# 3) Sales vs Profit (trendline)
+# 3) Sales vs Profit with trendline (try)
 if "Sales" in df_view.columns and "Profit" in df_view.columns:
     st.subheader("📊 Sales vs Profit (OLS Trendline)")
-    # Keep color by product if available
     color_arg = "Product" if "Product" in df_view.columns else None
     try:
         fig_sp = px.scatter(df_view, x="Sales", y="Profit", trendline="ols", color=color_arg, title="Sales vs Profit")
     except Exception:
-        # fallback: no trendline (if statsmodels missing)
-        fig_sp = px.scatter(df_view, x="Sales", y="Profit", color=color_arg, title="Sales vs Profit")
+        fig_sp = px.scatter(df_view, x="Sales", y="Profit", color=color_arg, title="Sales vs Profit (no trendline)")
     st.plotly_chart(fig_sp, use_container_width=True)
 
-# -------------------------
-# OPTION: Treemap (aggregated)
-# -------------------------
+# Treemap (aggregated) — advanced with profit & margin
+fig_treemap = None
 if "Category" in df_view.columns and "Sales" in df_view.columns:
     st.subheader("🗂️ Advanced Treemap — Sales, Profit & Margin")
 
-    # Aggregate at Category/Product level to ensure values align with treemap nodes
+    # aggregate
     if "Product" in df_view.columns and "Profit" in df_view.columns:
         agg_cols = ["Category", "Product"]
         df_agg = (
@@ -190,7 +159,6 @@ if "Category" in df_view.columns and "Sales" in df_view.columns:
         if "Profit" not in df_agg.columns:
             df_agg["Profit"] = 0.0
 
-    # Compute margin safely
     df_agg["Profit_Margin"] = np.where(df_agg["Sales"] != 0, df_agg["Profit"] / df_agg["Sales"], 0.0)
 
     path = ["Category", "Product"] if "Product" in df_agg.columns else ["Category"]
@@ -203,7 +171,6 @@ if "Category" in df_view.columns and "Sales" in df_view.columns:
         title="Sales contribution by Category and Product (colored by profit margin)",
     )
 
-    # Build customdata aligned to df_agg rows
     cd = np.stack((df_agg["Profit"].fillna(0).to_numpy(), df_agg["Profit_Margin"].to_numpy()), axis=-1)
     fig_treemap.update_traces(
         customdata=cd,
@@ -212,22 +179,16 @@ if "Category" in df_view.columns and "Sales" in df_view.columns:
         textposition="middle center",
     )
     st.plotly_chart(fig_treemap, use_container_width=True)
-else:
-    fig_treemap = None
 
-# -------------------------
-# Profit margin distribution
-# -------------------------
+# Profit margin histogram
 if show_profit_margin and "Profit" in df_view.columns and "Sales" in df_view.columns:
     st.subheader("📉 Profit Margin Distribution")
-    # avoid division by zero
     df_view = df_view.assign(Profit_Margin=np.where(df_view["Sales"] == 0, 0.0, df_view["Profit"] / df_view["Sales"]))
     fig_margin = px.histogram(df_view, x="Profit_Margin", nbins=40, title="Profit Margin Distribution")
     st.plotly_chart(fig_margin, use_container_width=True)
 
-# -------------------------
-# Top customers by sales
-# -------------------------
+# Top customers
+fig_top_cust = None
 if "Customer" in df_view.columns and "Sales" in df_view.columns:
     st.subheader("🏆 Top Customers by Sales (Top 20)")
     top_customers = (
@@ -240,9 +201,9 @@ if "Customer" in df_view.columns and "Sales" in df_view.columns:
     fig_top_cust = px.bar(top_customers, x="Customer", y="Sales", title="Top 20 Customers by Sales")
     st.plotly_chart(fig_top_cust, use_container_width=True)
 
-# -------------------------
-# Sales distribution + category pie
-# -------------------------
+# Sales distribution and category pie
+fig_sales_hist = None
+fig_cat_pie = None
 if "Sales" in df_view.columns:
     st.subheader("📦 Sales Distribution")
     fig_sales_hist = px.histogram(df_view, x="Sales", nbins=bins, title="Sales distribution")
@@ -255,127 +216,141 @@ if "Category" in df_view.columns:
     fig_cat_pie = px.pie(cat_counts, values="Count", names="Category", title="Category Distribution")
     st.plotly_chart(fig_cat_pie, use_container_width=True)
 
-# -------------------------
 # Statistical summary
-# -------------------------
 st.markdown("---")
 st.subheader("📊 Statistical Summary")
 summary = df_view.describe().T
 st.dataframe(summary)
 
-# -------------------------
-# Insights (descriptive)
-# -------------------------
+# Insights
 st.subheader("📝 Insights Summary:")
 insights = []
-
-# Sales-Profit correlation
 if "Sales" in df_view.columns and "Profit" in df_view.columns:
     corr_sp = df_view["Sales"].corr(df_view["Profit"])
     if corr_sp > 0.4:
         insights.append("Sales and Profit show a strong positive relationship — higher sales generally produce higher profit.")
     elif corr_sp < -0.3:
-        insights.append("Sales and Profit are negatively correlated — possibly due to discounts, returns, or low-margin items.")
+        insights.append("Sales and Profit are negatively correlated — check discounts or low-margin items.")
     else:
         insights.append("Sales and Profit show a weak correlation; margins differ by product/category.")
-
-# Treemap insight
 if "Category" in df_view.columns:
     top_cat = df_view["Category"].value_counts().idxmax()
     insights.append(f"Category **{top_cat}** is the most frequent and contributes substantially to total sales.")
-
-# Profit margin skewness
 if "Profit" in df_view.columns and "Sales" in df_view.columns:
-    df_view["Profit_Margin"] = np.where(df_view["Sales"] == 0, 0.0, df_view["Profit"] / df_view["Sales"])
-    skew = df_view["Profit_Margin"].skew()
-    if skew > 1:
-        insights.append("Profit margins are right-skewed — a few transactions/products have very high margins.")
-    else:
-        insights.append("Profit margins are relatively balanced across transactions.")
-
-# Top customers
+    skew = df_view.assign(Profit_Margin=np.where(df_view["Sales"] == 0, 0.0, df_view["Profit"] / df_view["Sales"]))["Profit_Margin"].skew()
+    insights.append("Profit margins are skewed." if skew > 1 else "Profit margins are fairly balanced.")
 if "Customer" in df_view.columns and "Sales" in df_view.columns:
     top_customer = df_view.groupby("Customer")["Sales"].sum().idxmax()
-    insights.append(f"Top customer is **{top_customer}**, generating the highest revenue in the selected period.")
-
-# Quantity seasonality
+    insights.append(f"Top customer: **{top_customer}**.")
 if "Quantity" in df_view.columns and "Date" in df_view.columns:
-    insights.append("Quantity shows time-based variation; consider investigating seasonality or promotions.")
-
+    insights.append("Quantity varies over time; investigate seasonality or promotions.")
 for it in insights:
     st.write("✔", it)
 
 # -------------------------
-# Export PNG / PDF Report
+# EXPORT LOGIC (robust)
 # -------------------------
 st.markdown("---")
-st.subheader("📤 Export Report (PNG / PDF)")
+st.subheader("📤 Export / Download")
 
-def fig_to_png_bytes(fig_obj, width=1200, height=800, scale=1):
+# Choose representative figure for export priority
+export_fig = fig_treemap or fig_sp or fig_sales_hist or fig_profit_prod if 'fig_profit_prod' in locals() else (fig_sp if 'fig_sp' in locals() else None)
+
+def fig_to_png_bytes_safe(fig_obj, width=1200, height=800, scale=1):
     """
-    Convert a Plotly figure to PNG bytes using kaleido via plotly.io.to_image/pio.to_image.
-    Returns bytes.
+    Safely try to convert Plotly figure to PNG bytes via kaleido.
+    Raises a RuntimeError with the original message on failure.
     """
     try:
         img_bytes = pio.to_image(fig_obj, format="png", width=width, height=height, scale=scale)
         return img_bytes
     except Exception as e:
-        raise RuntimeError(f"Failed to render figure to PNG: {e}")
+        raise RuntimeError(str(e))
 
-def make_pdf_bytes(title_text, fig_png_bytes):
+def make_pdf_bytes_with_image(title_text, png_bytes):
     """
-    Create a simple PDF in-memory with title text and the PNG image embedded.
-    Returns PDF bytes.
+    Create a PDF in-memory that embeds the given PNG bytes.
     """
+    buff = io.BytesIO()
+    c = canvas.Canvas(buff, pagesize=(595, 842))  # A4-ish
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(40, 800, title_text)
+    c.setFont("Helvetica", 9)
+    c.drawString(40, 785, f"Generated: {datetime.utcnow().isoformat()} UTC")
+    # Image
     try:
-        buffer = io.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=(595, 842))  # A4-ish in points
-        # Title
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(40, 800, title_text)
-        # Date
-        c.setFont("Helvetica", 9)
-        c.drawString(40, 785, f"Generated: {datetime.utcnow().isoformat()} UTC")
-        # Insert image (use ImageReader on PNG bytes)
-        img_reader = ImageReader(io.BytesIO(fig_png_bytes))
-        # place image at x=40 y=350 with width ~515
+        img_reader = ImageReader(io.BytesIO(png_bytes))
         c.drawImage(img_reader, 40, 350, width=515, preserveAspectRatio=True, mask='auto')
-        c.showPage()
-        c.save()
-        buffer.seek(0)
-        return buffer.read()
     except Exception as e:
-        raise RuntimeError(f"Failed to create PDF: {e}")
+        # fallback: note image could not be embedded
+        c.setFont("Helvetica", 10)
+        c.drawString(40, 740, "Note: PNG image could not be embedded in this PDF.")
+        c.drawString(40, 725, f"Image error: {str(e)[:200]}")
+    c.showPage()
+    c.save()
+    buff.seek(0)
+    return buff.read()
 
-# Choose a representative figure for export: prefer treemap, otherwise sales vs profit, otherwise sales hist
-export_fig = None
-if 'fig_treemap' in locals() and fig_treemap is not None:
-    export_fig = fig_treemap
-elif 'fig_sp' in locals():
-    export_fig = fig_sp
-elif 'fig_sales_hist' in locals():
-    export_fig = fig_sales_hist
+def make_pdf_bytes_text_only(title_text, insights_list):
+    """
+    Create a simple text-only PDF containing title + insights.
+    """
+    buff = io.BytesIO()
+    c = canvas.Canvas(buff, pagesize=(595, 842))
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(40, 800, title_text)
+    c.setFont("Helvetica", 9)
+    c.drawString(40, 785, f"Generated: {datetime.utcnow().isoformat()} UTC")
+    y = 750
+    c.setFont("Helvetica", 11)
+    for line in insights_list:
+        # wrap long lines
+        wrapped = [line[i:i+100] for i in range(0, len(line), 100)]
+        for w in wrapped:
+            c.drawString(40, y, w)
+            y -= 14
+            if y < 100:
+                c.showPage()
+                y = 800
+                c.setFont("Helvetica", 11)
+    c.showPage()
+    c.save()
+    buff.seek(0)
+    return buff.read()
 
+# Buttons + fallback behavior
 if export_fig is None:
-    st.info("No figure available for export.")
+    st.info("No figure available to export as image. You can still download the dataset or PDF text summary below.")
 else:
-    col_png, col_pdf = st.columns(2)
-    with col_png:
-        if st.button("⬇️ Download Dashboard PNG"):
+    col1, col2, col3 = st.columns([1,1,1])
+    with col1:
+        if st.button("⬇️ Download PNG Snapshot"):
             try:
-                png_bytes = fig_to_png_bytes(export_fig)
+                png_bytes = fig_to_png_bytes_safe(export_fig)
                 st.download_button("Download PNG", data=png_bytes, file_name="dashboard_snapshot.png", mime="image/png")
-            except Exception as e:
-                st.error(f"PNG export failed: {e}. Ensure 'kaleido' is installed (add to requirements).")
+            except RuntimeError as e:
+                # fallback: offer interactive HTML and show message
+                st.error("PNG export failed (Kaleido/Chrome likely missing). Offering interactive HTML instead.")
+                html_bytes = export_fig.to_html(full_html=True, include_plotlyjs='cdn').encode("utf-8")
+                st.download_button("Download interactive HTML snapshot", data=html_bytes, file_name="dashboard_snapshot.html", mime="text/html")
 
-    with col_pdf:
-        if st.button("⬇️ Download Dashboard PDF"):
+    with col2:
+        if st.button("⬇️ Download PDF Snapshot (with image if possible)"):
             try:
-                png_bytes = fig_to_png_bytes(export_fig)
-                pdf_bytes = make_pdf_bytes("Sales EDA — Snapshot Report", png_bytes)
-                st.download_button("Download PDF", data=pdf_bytes, file_name="Sales_Report.pdf", mime="application/pdf")
-            except Exception as e:
-                st.error(f"PDF export failed: {e}. Ensure 'kaleido' and 'reportlab' are installed (add to requirements).")
+                png_bytes = fig_to_png_bytes_safe(export_fig)
+                pdf_bytes = make_pdf_bytes_with_image("Sales EDA — Snapshot", png_bytes)
+                st.download_button("Download PDF (with image)", data=pdf_bytes, file_name="Sales_Report_with_image.pdf", mime="application/pdf")
+            except RuntimeError as e:
+                # fallback: create text-only PDF using insights
+                st.warning("PDF image embedding failed (Kaleido/Chrome likely missing). Generating text-only PDF summary instead.")
+                pdf_text_bytes = make_pdf_bytes_text_only("Sales EDA — Summary", insights)
+                st.download_button("Download PDF (text summary)", data=pdf_text_bytes, file_name="Sales_Report_summary.pdf", mime="application/pdf")
+
+    with col3:
+        # Always offer interactive HTML (works everywhere)
+        if st.button("⬇️ Download Interactive HTML"):
+            html_bytes = export_fig.to_html(full_html=True, include_plotlyjs='cdn').encode("utf-8")
+            st.download_button("Download interactive HTML", data=html_bytes, file_name="dashboard_interactive.html", mime="text/html")
 
 st.markdown("---")
-st.caption("Tip: For best export results install 'kaleido' and 'reportlab' in the environment.")
+st.caption("Tip: If PNG/PDF export fails due to Kaleido/Chrome, use the interactive HTML or the text-only PDF. To enable PNG exports install Chrome/Chromium in the environment or run `plotly_get_chrome` where supported.")
