@@ -1,91 +1,77 @@
-# **📊 Sales EDA Dashboard by Aniket Gund – Project Overview**
+# 📈 Retail Sales Exploratory Data Analysis & Analytics App
 
-### **Direct Live Link: https://edasalesproject-ljygldtmnveyrmjohsqtcq.streamlit.app/**
+[![GitHub Stars](https://img.shields.io/github/stars/Aniket-Gund/EDA_Sales_Project?style=for-the-badge&color=blue)](https://github.com/Aniket-Gund/EDA_Sales_Project/stargazers)
+[![Python](https://img.shields.io/badge/Python-3.10-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io)
+[![Pandas](https://img.shields.io/badge/Pandas-Data%20Analysis-150458?style=for-the-badge&logo=pandas&logoColor=white)](https://pandas.pydata.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
 
-## **🎯 Objective:**
+An exploratory data analysis and interactive Streamlit web dashboard analyzing retail sales datasets. Features sales trend forecasting, regional demand patterns, customer demographics, and product revenue contributions.
 
-The goal of this Exploratory Data Analysis (EDA) is to understand how different business factors — such as product categories, customer behavior, sales volume, profitability, and time-based trends — impact overall performance.
-The dashboard helps uncover patterns, compare product segments, identify top customers, and analyze profit margins to support data-driven decisions.
+---
 
-## **🔍 Key Questions Explored in the EDA**
+## 🌟 Key Features
 
-1️⃣ What is the distribution of Sales?
+- **📊 Comprehensive Visual Reports**: Time-series sales trend curves, profit margins across product categories, and regional revenue maps.
+- **📄 Interactive HTML Profiling**: Includes `sales_eda_snapshot.html` for offline interactive exploration.
+- **🌐 Streamlit Application**: Live web dashboard for dynamic filtering by date range, product line, and sales region.
+- **📓 Jupyter Notebook**: Step-by-step EDA methodology documented in `EDA_Project_Sales.ipynb`.
 
-Visual: Histogram
-Understand how sales values are spread across all transactions and identify whether the distribution is skewed toward high or low spenders.
+---
 
-2️⃣ How much quantity is sold over time?
+## 🏗️ Data Architecture
 
-Visual: Line Chart (Time Series)
-Shows purchasing trends and seasonal fluctuations, helping spot peaks, drops, and sales cycles.
+```mermaid
+flowchart LR
+    A[sales_dataset.xlsx Raw Data] --> B[Data Cleaning & Missing Value Treatment]
+    B --> C[Jupyter Analysis: EDA_Project_Sales.ipynb]
+    C --> D[HTML Profile Report: sales_eda_snapshot.html]
+    B --> E[Streamlit Dashboard: app.py]
+    E --> F[Interactive KPI Metrics & Revenue Charts]
+```
 
-3️⃣ Which products generate the highest profit?
+---
 
-Visual: Bar Chart
-Compare total profit across all products to find top-performing and low-performing items.
+## 📂 Repository Structure
 
-4️⃣ How do Sales and Profit relate to each other?
+```
+EDA_Sales_Project/
+│
+├── EDA_Project_Sales.ipynb  # Interactive Jupyter notebook with statistical figures
+├── app.py                   # Streamlit web analytics dashboard
+├── eda_project_sales.py     # Standalone data analysis script
+├── sales_dataset.xlsx       # Primary Excel sales transaction records
+├── sales_eda_snapshot.html  # Standalone interactive HTML profiling report
+├── requirements.txt         # Dependencies
+└── README.md                # Project documentation
+```
 
-Visual: Scatter Plot + Trendline
-Reveal whether higher sales consistently lead to higher profit and detect margins that vary by product.
+---
 
-5️⃣ Which categories and products dominate overall revenue?
+## 🚀 Getting Started
 
-Visual: Enhanced Treemap (Sales + Profit + Margin)
-A hierarchical visual breakdown showing:
+```bash
+git clone https://github.com/Aniket-Gund/EDA_Sales_Project.git
+cd EDA_Sales_Project
 
-Category contribution
+python -m venv venv
+venv\Scripts\activate    # Windows
+source venv/bin/activate  # macOS/Linux
 
-Product contribution
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-Profit
+---
 
-Profit Margin
+## 👨‍💻 Author
 
-Percentage share
+**Aniket Gund**
+- GitHub: [@Aniket-Gund](https://github.com/Aniket-Gund)
+- LinkedIn: [Aniket Gund](https://www.linkedin.com/in/aniket-gund/)
 
-This helps quickly identify high-value segments.
+---
 
-6️⃣ What does the Profit Margin distribution look like?
+## 📄 License
 
-Visual: Histogram
-Understand how efficiently each product or category converts revenue into profit.
-
-7️⃣ Who are the Top Customers driving Sales?
-
-Visual: Bar Chart
-Identify high-value customers who bring the most sales and might be worth special focus (retention or targeted marketing).
-
-8️⃣ How are Sales distributed by Category?
-
-Visual: Pie Chart
-Evaluate the share of each category in total purchases to see which group dominates or underperforms.
-
-9️⃣ What are the key statistical properties of Sales data?
-
-Visual: Statistical Summary Table
-Shows mean, median, standard deviation, max/min values, variation, etc., giving a quick numeric understanding of the dataset.
-
-🔟 What insights can be derived overall?
-
-Insights Summary (Auto-Generated)
-Highlights core findings such as:
-
-Correlation between Sales and Profit
-
-Top-performing categories
-
-Best-selling products
-
-Top customers
-
-Margin behavior and anomalies
-
-## **📥 Export Options Available in the Dashboard**
-
-The dashboard includes two convenient export features:
-
-✔ Download Original Dataset (.xlsx)
-✔ Download Interactive HTML Snapshot (all charts + insights)
-
-The HTML report contains fully interactive Plotly charts, preserving colors, hover details, zooming, and UI-style formatting.
+Distributed under the [MIT License](LICENSE).
